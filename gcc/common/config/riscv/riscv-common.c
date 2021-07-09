@@ -50,6 +50,9 @@ static const riscv_implied_info_t riscv_implied_info[] =
   {"d", "f"},
   {"f", "zicsr"},
   {"d", "zicsr"},
+  {"zce", "zcee"},
+  {"zce", "zcea"},
+  {"zce", "zceb"},
   {NULL, NULL}
 };
 
@@ -905,6 +908,10 @@ static const riscv_ext_flag_table_t riscv_ext_flag_table[] =
 
   {"zicsr",    &gcc_options::x_riscv_zi_subext, MASK_ZICSR},
   {"zifencei", &gcc_options::x_riscv_zi_subext, MASK_ZIFENCEI},
+
+  {"zcea", &gcc_options::x_riscv_zce_subext, MASK_ZCEA},
+  {"zcee", &gcc_options::x_riscv_zce_subext, MASK_ZCEE},
+  {"zceb", &gcc_options::x_riscv_zce_subext, MASK_ZCEB},
 
   {NULL, NULL, 0}
 };
