@@ -73,6 +73,7 @@
 
 (define_constants
   [(RETURN_ADDR_REGNUM		1)
+   (SP_REGNUM 			2)
    (GP_REGNUM 			3)
    (TP_REGNUM			4)
    (T0_REGNUM			5)
@@ -2845,6 +2846,7 @@
   "<load>\t%3, %1\;<load>\t%0, %2\;xor\t%0, %3, %0\;li\t%3, 0"
   [(set_attr "length" "12")])
 
+(include "zc.md")
 (include "sync.md")
 (include "peephole.md")
 (include "pic.md")
