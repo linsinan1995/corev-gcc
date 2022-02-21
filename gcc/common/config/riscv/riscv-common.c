@@ -50,6 +50,10 @@ static const riscv_implied_info_t riscv_implied_info[] =
   {"d", "f"},
   {"f", "zicsr"},
   {"d", "zicsr"},
+  {"zcb", "zca"},
+  {"zcmb", "zcb"},
+  {"zcmp", "zca"},
+  {"zcmpe", "zca"},
   {NULL, NULL}
 };
 
@@ -100,6 +104,14 @@ static const struct riscv_ext_version riscv_ext_version_table[] =
 
   {"zifencei", ISA_SPEC_CLASS_20191213, 2, 0},
   {"zifencei", ISA_SPEC_CLASS_20190608, 2, 0},
+
+  {"zca",   ISA_SPEC_CLASS_NONE, 0, 7},
+  {"zcb",   ISA_SPEC_CLASS_NONE, 0, 7},
+  {"zcf",   ISA_SPEC_CLASS_NONE, 0, 7},
+  {"zcmb",  ISA_SPEC_CLASS_NONE, 0, 7},
+  {"zcmp",  ISA_SPEC_CLASS_NONE, 0, 7},
+  {"zcmpe", ISA_SPEC_CLASS_NONE, 0, 7},
+  {"zcmt",  ISA_SPEC_CLASS_NONE, 0, 7},
 
   /* Terminate the list.  */
   {NULL, ISA_SPEC_CLASS_NONE, 0, 0}
@@ -905,6 +917,14 @@ static const riscv_ext_flag_table_t riscv_ext_flag_table[] =
 
   {"zicsr",    &gcc_options::x_riscv_zi_subext, MASK_ZICSR},
   {"zifencei", &gcc_options::x_riscv_zi_subext, MASK_ZIFENCEI},
+
+  {"zca",    &gcc_options::x_riscv_zc_subext, MASK_ZCA},
+  {"zcb",    &gcc_options::x_riscv_zc_subext, MASK_ZCB},
+  {"zcf",    &gcc_options::x_riscv_zc_subext, MASK_ZCF},
+  {"zcmb",   &gcc_options::x_riscv_zc_subext, MASK_ZCMB},
+  {"zcmp",   &gcc_options::x_riscv_zc_subext, MASK_ZCMP},
+  {"zcmpe",  &gcc_options::x_riscv_zc_subext, MASK_ZCMPE},
+  {"zcmt",   &gcc_options::x_riscv_zc_subext, MASK_ZCMT},
 
   {NULL, NULL, 0}
 };
