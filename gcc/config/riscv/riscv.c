@@ -2161,6 +2161,17 @@ riscv_output_return ()
   return "ret";
 }
 
+bool
+riscv_output_popret_p (rtx op)
+{
+  unsigned n_rtx = XVECLEN (op, 0);
+  rtx use = XVECEXP (op, 0, n_rtx - 1);
+  rtx ret = XVECEXP (op, 0, n_rtx - 2);
+
+    return GET_CODE (ret) == SIMPLE_RETURN
+	&&  GET_CODE (use) == USE;
+}
+
 
 /* Return true if CMP1 is a suitable second operand for integer ordering
    test CODE.  See also the *sCC patterns in riscv.md.  */
@@ -3427,6 +3438,20 @@ riscv_memmodel_needs_release_fence (enum memmodel model)
 }
 
 static void
+riscv_print_pop_size (FILE *file, rtx op)
+{
+  unsigned sp_adjust_idx = XVECLEN (op, 0) - 1;
+  rtx sp_adjust_rtx = XVECEXP (op, 0, sp_adjust_idx);
+
+  /* Skip ret or pattern.  */
+  while (GET_CODE (sp_adjust_rtx) != SET)
+    sp_adjust_rtx = XVECEXP (op, 0, --sp_adjust_idx);
+
+  rtx elt_plus = SET_SRC (sp_adjust_rtx);
+  fprintf (file, "%ld", INTVAL (XEXP (elt_plus, 1)));
+}
+
+static void
 riscv_print_reglist (FILE *file, rtx op)
 {
   /* we only deal with three formats:
@@ -3530,6 +3555,10 @@ riscv_print_operand (FILE *file, rtx op, int letter)
 
     case 'L':
       riscv_print_reglist (file, op);
+      break;
+
+    case 'S':
+      riscv_print_pop_size (file, op);
       break;
 
     default:
@@ -3783,7 +3812,7 @@ riscv_use_push_pop (const struct riscv_frame_info *frame)
 
   /* {ra,s0-s10} is invalid. */
   if (frame->mask & (1 << (S10_REGNUM - GP_REG_FIRST))
-      ^ (frame->mask & (1 << (S11_REGNUM - GP_REG_FIRST))))
+      && !(frame->mask & (1 << (S11_REGNUM - GP_REG_FIRST))))
     return false;
 
   return frame->mask & (1 << (RETURN_ADDR_REGNUM - GP_REG_FIRST));
@@ -4350,6 +4379,79 @@ riscv_emit_push_insn (struct riscv_frame_info *frame, HOST_WIDE_INT size)
   RTX_FRAME_RELATED_P (insn) = 1;
 }
 
+static void
+riscv_emit_pop_insn (struct riscv_frame_info *frame, HOST_WIDE_INT offset, HOST_WIDE_INT size)
+{
+  unsigned int veclen = riscv_save_push_pop_count (frame->mask);
+  unsigned int n_reg = veclen - 1;
+  rtvec vec = rtvec_alloc (veclen);
+  HOST_WIDE_INT sp_adjust;
+  rtx dwarf = NULL_RTX;
+
+  gcc_assert (n_reg <= ARRAY_SIZE (push_save_reg_order)
+      && n_reg >= 1);
+
+  /* sp adjust pattern */
+  int max_allow_sp_adjust = riscv_push_pop_max_sp_adjust (frame->mask);
+
+  /* if sp adjustment is too large, we should split it first. */
+  if (size > max_allow_sp_adjust)
+    {
+      rtx dwarf_pre_sp_adjust = NULL_RTX;
+      rtx pre_adjust_rtx = gen_add3_insn (stack_pointer_rtx,
+			stack_pointer_rtx,
+			GEN_INT (size - max_allow_sp_adjust));
+      rtx insn = emit_insn (pre_adjust_rtx);
+
+      rtx cfa_pre_adjust_rtx = gen_rtx_PLUS (Pmode, stack_pointer_rtx,
+			GEN_INT (size - max_allow_sp_adjust));
+      dwarf_pre_sp_adjust = alloc_reg_note (REG_CFA_DEF_CFA,
+		cfa_pre_adjust_rtx,
+		dwarf_pre_sp_adjust);
+
+      RTX_FRAME_RELATED_P (insn) = 1;
+      REG_NOTES (insn) = dwarf_pre_sp_adjust;
+
+      sp_adjust = max_allow_sp_adjust;
+    }
+  else
+    sp_adjust = size;
+
+  /* register save sequence. */
+  for (unsigned i = 1; i < veclen; ++i)
+    {
+      offset -= UNITS_PER_WORD;
+      unsigned regno = push_save_reg_order[i];
+      rtx reg = gen_rtx_REG (Pmode, regno);
+      rtx mem = gen_frame_mem (Pmode, plus_constant (Pmode,
+	      stack_pointer_rtx,
+	      offset));
+      rtx set = gen_rtx_SET (reg, mem);
+      RTVEC_ELT (vec, i - 1) = set;
+      RTX_FRAME_RELATED_P (set) = 1;
+      dwarf = alloc_reg_note (REG_CFA_RESTORE, reg, dwarf);
+    }
+
+  /* sp adjust pattern */
+  rtx adjust_sp_rtx
+      = gen_rtx_SET (stack_pointer_rtx,
+	    plus_constant (Pmode,
+		stack_pointer_rtx,
+		sp_adjust));
+  RTVEC_ELT (vec, veclen - 1) = adjust_sp_rtx;
+
+  rtx cfa_adjust_rtx = gen_rtx_PLUS (Pmode, stack_pointer_rtx,
+	const0_rtx);
+  dwarf = alloc_reg_note (REG_CFA_DEF_CFA, cfa_adjust_rtx, dwarf);
+
+  frame->push_pop_offset = (veclen - 1) * UNITS_PER_WORD;
+  frame->push_pop_sp_adjust = sp_adjust;
+
+  rtx insn = emit_insn (gen_rtx_PARALLEL (VOIDmode, vec));
+  RTX_FRAME_RELATED_P (insn) = 1;
+  REG_NOTES (insn) = dwarf;
+}
+
 /* Expand the "prologue" pattern.  */
 
 void
@@ -4487,6 +4589,10 @@ riscv_expand_epilogue (int style)
   rtx ra = gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM);
   rtx insn;
 
+  bool use_zcmp_pop = riscv_use_push_pop (frame)
+      && !use_restore_libcall
+      && !(crtl->calls_eh_return);
+
   /* We need to add memory barrier to prevent read from deallocated stack.  */
   bool need_barrier_p = (get_frame_size ()
 			 + cfun->machine->frame.arg_pointer_offset) != 0;
@@ -4583,6 +4689,16 @@ riscv_expand_epilogue (int style)
   if (use_restore_libcall)
     frame->mask = 0; /* Temporarily fib that we need not save GPRs.  */
 
+  if (riscv_use_push_pop (frame))
+    {
+      /* Emit a barrier to prevent loads from a deallocated stack.  */
+      riscv_emit_stack_tie ();
+      need_barrier_p = false;
+      riscv_emit_pop_insn (frame, frame->total_size, step2);
+      frame->mask &= ~RISCV_ZCE_PUSH_POP_MASK;
+      step2 = 0;
+    }
+
   /* Restore the registers.  */
   riscv_for_each_saved_reg (frame->total_size - step2, riscv_restore_reg,
 			   true, style == EXCEPTION_RETURN);
@@ -4597,12 +4713,15 @@ riscv_expand_epilogue (int style)
   if (need_barrier_p)
     riscv_emit_stack_tie ();
 
+  if (use_zcmp_pop)
+    frame->mask = mask;
+
   /* Deallocate the final bit of the frame.  */
   if (step2 > 0)
     {
-      insn = emit_insn (gen_add3_insn (stack_pointer_rtx, stack_pointer_rtx,
-					GEN_INT (step2)));
-
+      insn = emit_insn (gen_add3_insn (stack_pointer_rtx,
+					 stack_pointer_rtx,
+					 GEN_INT (step2)));
       rtx dwarf = NULL_RTX;
       rtx cfa_adjust_rtx = gen_rtx_PLUS (Pmode, stack_pointer_rtx,
 					 const0_rtx);
