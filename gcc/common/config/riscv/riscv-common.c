@@ -54,6 +54,8 @@ static const riscv_implied_info_t riscv_implied_info[] =
   {"zcmb", "zcb"},
   {"zcmp", "zca"},
   {"zcmpe", "zca"},
+  {"zcmt", "zca"},
+  {"zcmt", "zicsr"},
   {NULL, NULL}
 };
 
