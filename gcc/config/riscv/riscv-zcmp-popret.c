@@ -242,7 +242,7 @@ public:
 
   /* opt_pass methods: */
   virtual bool gate (function *)
-    { return TARGET_ZCMP; }
+    { return TARGET_ZCMP || TARGET_ZCMPE; }
   virtual unsigned int execute (function *)
     {
       zcmp_popret ();
