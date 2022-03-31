@@ -38,8 +38,8 @@
 
 (define_insn "*stack_pop_with_return_value<mode>"
   [(match_parallel 0 "riscv_stack_pop_operation"
-    [(set (reg:X A0_REGNUM)
-      (match_operand:X 1 "pop_return_value_constant" ""))])]
+    [(set (reg:ANYI A0_REGNUM)
+      (match_operand:ANYI 1 "pop_return_value_constant" ""))])]
   "TARGET_ZCMP || TARGET_ZCMPE"
   {
     gcc_assert (riscv_output_popret_p (operands[0]));
