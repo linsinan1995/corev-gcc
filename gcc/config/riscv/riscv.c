@@ -3828,14 +3828,21 @@ riscv_use_push_pop (const struct riscv_frame_info *frame)
 static unsigned
 riscv_save_push_pop_count (unsigned mask)
 {
+  unsigned reg_array_len = TARGET_ZCMPE ? ARRAY_SIZE (push_save_reg_order_zcmpe)
+	  : ARRAY_SIZE (push_save_reg_order);
+  const unsigned *reg_order = TARGET_ZCMPE ?
+	  push_save_reg_order_zcmpe
+	: push_save_reg_order;
+  unsigned n = 2;
+
   if (!BITSET_P (mask, GP_REG_FIRST + RETURN_ADDR_REGNUM))
     return 0;
-  for (unsigned n = GP_REG_LAST; n > GP_REG_FIRST; n--)
-    if (BITSET_P (mask, n)
-	&& !call_used_regs [n])
-      /* add ra saving and sp adjust. */
-      return CALLEE_SAVED_REG_NUMBER (n) + 1 + 2;
-  abort ();
+
+  for (; n < reg_array_len; n++)
+    if (!BITSET_P (mask, reg_order [n]))
+      break;
+
+  return n;
 }
 
 /* Determine which GPR save/restore routine to call.  */
