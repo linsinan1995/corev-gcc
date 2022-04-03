@@ -199,6 +199,7 @@ zcmp_popret (void)
 	    if (riscv_check_regno (XEXP (pop_pat, 0),
 		    RETURN_VALUE_REGNUM)
 		&& insn
+		&& pat_set != NULL
 		&& GET_CODE (pat_set) == SET
 		&& riscv_check_regno (SET_DEST (pat_set),
 		       RETURN_VALUE_REGNUM)
